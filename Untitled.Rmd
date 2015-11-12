@@ -3,18 +3,86 @@ title: "CanadianRetailSales"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+In this document we develop a simple forecasting model of Canadian Retail Sales.
+The first thing I done was to look at the data you provided. It describes unadjusted and seasonally adjusted Monthly Retail Trades in Canada from **January 2000** to **July 2015**.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Looking at the date the data were accessed the 20th of October 2015. Looking at the Statistics Canada website, I first noticed that the data were last modified the 22nd of October 2015 and that the numbers were slightly different.
+
+Finally, Available data ends in August 2015 on the Statistics Canada website. Since the exercise is to predict next month's unadjusted Canadian retail sales I decided to not include that entry in the base dataset, since it might be used later on to evaluate the
+quality of our mondel.
+
+```{r, echo=FALSE, message=FALSE}
+library(plyr)
+library(dplyr)
+library(xts)
+library(zoo)
+library(ggplot2)
+```
+
+## 1. Formatting the data:
+
+First the data provided is not ideal for an analysis using R so I had to reformat it.
 
 ```{r}
-summary(cars)
+base.data <- read.csv('./data/cansim__Jan-2000_Jul-2015.csv', header=FALSE)
+
+data <-
+  base.data %>%
+  select(-V1, -V2, -V3) %>% # Remove the description columns
+  slice(5:7) %>%            # Only select row containing data
+  t %>% data.frame %>%      # Transpose and cast to data.frame
+  rename(adjustments=X1) %>%
+  rename(unadjusted=X2) %>%
+  rename(seasonally.adjusted=X3) %>%
+  mutate(seasonally.adjusted=as.numeric(as.character(seasonally.adjusted))) %>%
+  mutate(unadjusted=as.numeric(as.character(unadjusted))) %>%
+  mutate(adjustments=as.Date(
+                        as.character(x=paste("01-", adjustments, sep="")),
+                        format="%d-%b-%Y")
+         )# Converts the adjustments. You need to paste a day to be able to convert such format to a date.
+  
+data.ts <- xts(data, order.by=data$adjustments) # Create a time series object of the data
+# data.ts$unadjusted <- as.numeric(as.character(data.ts$unadjusted))
+# data.ts$seasonally.adjusted <- as.numeric(as.character(data.ts$seasonally.adjusted))
 ```
 
-You can also embed plots, for example:
+Now it will be easier to work with such format.
 
-```{r, echo=FALSE}
-plot(cars)
+### First look at the data:
+
+```{r}
+g.data.with.regression <-
+  ggplot(data, aes(x=adjustments, y=unadjusted, color='unadjusted')) +
+  geom_smooth(method='lm', color='black') + geom_line() +
+  geom_line(data=data, aes(x=adjustments, y=seasonally.adjusted, color='seasonally.adjusted')) +
+  xlab('Time') + ylab('Retail Sales')
+
+g.data.with.regression
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Looking at the plot, we first observe that unadjusted retail sales have a very strong seasonal component. Seasonality of our dataset will be  key in its forecasting.
+At glance, we can observe a 12 month pattern. But let's have a deeper look into it:
+
+The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the data. Then it will be easier to evaluate the seasonality of the retail sales data.
+
+We model the trend using a linear regression.
+```{r}
+unadjusted.regression <- lm(data$unadjusted~data$adjustments)
+```
+
+Then we remove the trend from the data by simply getting the residuals of the regression
+```{r}
+unadjusted.residuals <- residuals(unadjusted.regression)
+
+g.residuals <-
+  ggplot(data.frame(unadjusted.residuals)) +
+  geom_line(aes(x=index(data.frame(unadjusted.residuals)), y=unadjusted.residuals))
+
+g.residuals
+```
+
+Looking at the auto-correlation of the retail sales data, we can then identify repeating patterns
+```{r}
+acf(unadjusted.residuals)
+```
+
