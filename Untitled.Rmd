@@ -17,9 +17,12 @@ library(dplyr)
 library(xts)
 library(zoo)
 library(ggplot2)
+library(forecast)
+library(tseries)
 ```
+## Preliminaries:
 
-## 1. Formatting the data:
+### Formatting the data:
 
 First the data provided is not ideal for an analysis using R so I had to reformat it.
 
@@ -40,11 +43,9 @@ data <-
                         as.character(x=paste("01-", adjustments, sep="")),
                         format="%d-%b-%Y")
          )# Converts the adjustments. You need to paste a day to be able to convert such format to a date.
-  
-data.ts <- xts(data, order.by=data$adjustments) # Create a time series object of the data
-# data.ts$unadjusted <- as.numeric(as.character(data.ts$unadjusted))
-# data.ts$seasonally.adjusted <- as.numeric(as.character(data.ts$seasonally.adjusted))
 ```
+
+
 
 Now it will be easier to work with such format.
 
@@ -60,7 +61,39 @@ g.data.with.regression <-
 g.data.with.regression
 ```
 
-Looking at the plot, we first observe that unadjusted retail sales have a very strong seasonal component. Seasonality of our dataset will be  key in its forecasting.
+We want to build a model that can forecast unadjusted retail sales data, let's create a time series object for
+that data.
+```{r}
+unadjusted.ts <- ts(data$unadjusted, frequency=12)
+```
+
+From here, we can note a few observations:
+
+* The retail sales are strongly seasonal.
+* The retail sales seems to follow a linear trend.
+* The time plot shows a sudden change, particulary in 2009.
+* The variability of the seasonal components seems constant.
+
+### Stationarity:
+From those observations, we can suppose that our time series is not stationary process.
+But let's test that assumption using the **Augmented Dickey-Fuller Test**, the **Box test** and the **KPSS test**.
+
+
+```{r  message=FALSE, warning=FALSE}
+results = list(
+  adf=adf.test(unadjusted.ts)$p.value < 0.05,
+  box=Box.test(unadjusted.ts, lag=12, type='Ljung-Box')$p.value < 0.05,
+  kpss=kpss.test(unadjusted.ts)$p.value > 0.05
+)
+results
+```
+
+From those test, we note that the three tests don't give the same results of stationarity.
+Thus, we will assume the data is not stationary.
+
+### Seasonality:
+
+Seasonality of our dataset will be  key in its forecasting.
 At glance, we can observe a 12 month pattern. But let's have a deeper look into it:
 
 The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the data. Then it will be easier to evaluate the seasonality of the retail sales data.
@@ -73,16 +106,27 @@ unadjusted.regression <- lm(data$unadjusted~data$adjustments)
 Then we remove the trend from the data by simply getting the residuals of the regression
 ```{r}
 unadjusted.residuals <- residuals(unadjusted.regression)
-
-g.residuals <-
-  ggplot(data.frame(unadjusted.residuals)) +
-  geom_line(aes(x=index(data.frame(unadjusted.residuals)), y=unadjusted.residuals))
-
-g.residuals
 ```
 
-Looking at the auto-correlation of the retail sales data, we can then identify repeating patterns
+Looking at the auto-correlation of the retail sales data, we can then identify repeating patterns.
+Another method to detrend the data is to look at its first difference. In the following plot, we compare the both approaches.
 ```{r}
-acf(unadjusted.residuals)
+unadjusted.residuals.ts <- ts(unadjusted.residuals, frequency=12)
+first.diff.unadjusted.ts <- ts(diff(data$unadjusted), frequency=12)
+
+par(mfrow=c(3,2))
+plot(unadjusted.residuals, type='l')
+plot(diff(data$unadjusted), type='l')
+acf(unadjusted.residuals, lag=nrow(data)) # ACF of residuals
+acf(diff(data$unadjusted), lag=nrow(data))
+pacf(unadjusted.residuals) # PACF of residuals
+pacf(diff(data$unadjusted))
+seasonplot(unadjusted.residuals.ts)
+seasonplot(first.diff.unadjusted.ts)
+
+par(mfrow=c(1,1))
+plot(decompose(ts(unadjusted.residuals, frequency=12)))
 ```
+We observe spikes at every 12 lags (in months)
+
 
