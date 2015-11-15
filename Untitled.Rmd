@@ -8,8 +8,9 @@ The first thing I done was to look at the data you provided. It describes unadju
 
 Looking at the date the data were accessed the 20th of October 2015. Looking at the Statistics Canada website, I first noticed that the data were last modified the 22nd of October 2015 and that the numbers were slightly different.
 
-Finally, Available data ends in August 2015 on the Statistics Canada website. Since the exercise is to predict next month's unadjusted Canadian retail sales I decided to not include that entry in the base dataset, since it might be used later on to evaluate the
-quality of our mondel.
+Definition: Retail trade is defined in the International Standard Industrial Classification (ISIC) as the re-sale (sale without transformation) of new and used goods to the general public, for personal or household consumption or utilisation.
+
+By researching the [Statistics Canada help page](http://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=2406), we note that that seasonally adjusted data is built using the X-12-ARIMA method.
 
 ```{r, echo=FALSE, message=FALSE}
 library(plyr)
@@ -61,18 +62,19 @@ g.data.with.regression <-
 g.data.with.regression
 ```
 
-We want to build a model that can forecast unadjusted retail sales data, let's create a time series object for
-that data.
-```{r}
-unadjusted.ts <- ts(data$unadjusted, frequency=12)
-```
-
 From here, we can note a few observations:
 
 * The retail sales are strongly seasonal.
-* The retail sales seems to follow a linear trend.
 * The time plot shows a sudden change, particulary in 2009.
 * The variability of the seasonal components seems constant.
+
+
+We want to build a model that can forecast unadjusted retail sales data, let's create timeseries objects for
+that data.
+
+```{r}
+unadjusted.ts <- ts(data$unadjusted, frequency=12)
+```
 
 ### Stationarity:
 From those observations, we can suppose that our time series is not stationary process.
@@ -80,53 +82,192 @@ But let's test that assumption using the **Augmented Dickey-Fuller Test**, the *
 
 
 ```{r  message=FALSE, warning=FALSE}
-results = list(
+results.unadjusted <- list(
   adf=adf.test(unadjusted.ts)$p.value < 0.05,
   box=Box.test(unadjusted.ts, lag=12, type='Ljung-Box')$p.value < 0.05,
   kpss=kpss.test(unadjusted.ts)$p.value > 0.05
 )
-results
+results.unadjusted
 ```
 
 From those test, we note that the three tests don't give the same results of stationarity.
-Thus, we will assume the data is not stationary.
+Moreover, if we have a look at the Autocorrelation function (ACF) and the Partial autocorrelation function (PACF) of our data. The ACF shows large autocorrelations that diminish very slowly at large lags. This is usually the
+signature of a non-stationary time series.
 
-### Seasonality:
+```{r}
+tsdisplay(unadjusted.ts)
+```
 
-Seasonality of our dataset will be  key in its forecasting.
-At glance, we can observe a 12 month pattern. But let's have a deeper look into it:
+Thus, we can safely assume the data is not stationary which means we need to transform the data such that 
+our process is stationary on mean and variance.
 
-The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the data. Then it will be easier to evaluate the seasonality of the retail sales data.
+Since non stationary a good idea would be to model the data using an ARIMA process, the most general class of models for forecasting a time series which can be transformed to be “stationary” by differenciation, log transformation or by taking the residuals of a linear regression.
+
+### Stationarising:
+
+The next step is to transform the data to make it stationary.
+
+The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the
+data.
 
 We model the trend using a linear regression.
 ```{r}
 unadjusted.regression <- lm(data$unadjusted~data$adjustments)
+sa.unadjusted.regression <- lm(data$seasonally.adjusted~data$adjustments)
 ```
 
 Then we remove the trend from the data by simply getting the residuals of the regression
 ```{r}
 unadjusted.residuals <- residuals(unadjusted.regression)
+sa.residuals <- residuals(sa.unadjusted.regression)
 ```
 
-Looking at the auto-correlation of the retail sales data, we can then identify repeating patterns.
-Another method to detrend the data is to look at its first difference. In the following plot, we compare the both approaches.
+We now have the following ACF and PACF:
+
 ```{r}
 unadjusted.residuals.ts <- ts(unadjusted.residuals, frequency=12)
-first.diff.unadjusted.ts <- ts(diff(data$unadjusted), frequency=12)
-
-par(mfrow=c(3,2))
-plot(unadjusted.residuals, type='l')
-plot(diff(data$unadjusted), type='l')
-acf(unadjusted.residuals, lag=nrow(data)) # ACF of residuals
-acf(diff(data$unadjusted), lag=nrow(data))
-pacf(unadjusted.residuals) # PACF of residuals
-pacf(diff(data$unadjusted))
-seasonplot(unadjusted.residuals.ts)
-seasonplot(first.diff.unadjusted.ts)
-
-par(mfrow=c(1,1))
-plot(decompose(ts(unadjusted.residuals, frequency=12)))
+tsdisplay(unadjusted.residuals.ts)
 ```
-We observe spikes at every 12 lags (in months)
+
+From that plot, we remark that is a seasonal component available with a 12 lag period (see lags 12, 24, 36, etc...)
+
+The goal now is to identify presence of AR and MA components in the residuals.
+Because the seasonal pattern is strong and stable, we will want to use an order of seasonal differencing in the model. This, we seasonallly differentiate the residuals with a lat of 12 months.
+
+```{r}
+diff.residuals.ts <- diff(unadjusted.residuals.ts, lag=12)
+tsdisplay(diff.residuals.ts)
+```
+
+From the partial autocorrelogram, we see that the partial autocorrelation at `lag 1` is positive and exceeds the significance bounds (~0.5), while the partial autocorrelation at `lag 4` is negative and also exceeds the significance bounds (~-0.3). The partial autocorrelations tail off to zero after lag 4.
+
+Suggest a model blah blah...
+The MA(q) process Xt has ρk = 0 for all k, |k| > q. So a diagnostic for MA(q) is
+that |rk| drops to near zero beyond some threshold.
+Try to fit....
+
+Let's fit the estimated on the transformed data:
+
+```{r}
+fit.estimated.model <-
+  arima(diff.residuals.ts,
+        order=c(1, 0, 4),
+        seasonal=list(order=c(0, 1, 1), period=12)
+  )
+
+fit.estimated.model
+plot(acf(residuals(fit.estimated.model)))
+```
+
+We can then try to fit our estimated model on the unadjusted retail sales data:
+```{r}
+fit.estimated.model.unadjusted.data <-
+  arima(unadjusted.ts,
+        order=c(1, 0, 4),
+        seasonal=list(order=c(1, 1, 0), period=12)
+  )
+
+fit.estimated.model.unadjusted.data
+```
+
+```{r}
+plot(forecast(fit.estimated.model.unadjusted.data))
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(acf(residuals(fit.estimated.model.unadjusted.data)))
+plot(density(residuals(fit.estimated.model.unadjusted.data)))
+qqnorm(residuals(fit.estimated.model.unadjusted.data))
+qqline(residuals(fit.estimated.model.unadjusted.data), col = 2)
+```
+
+```{r, echo=FALSE, message=FALSE}
+par(mfrow=c(1,1))
+```
+
+Since successive forecast errors seem to be sligthly correlated, and the forecast errors seem to be normally distributed with mean zero and constant variance, the ARIMA(0,1,1) does seem to provide an adequate predictive model.
+
+```{r}
+shapiro.test(residuals(fit.estimated.model.unadjusted.data))
+```
+the p-value is < 0.05 so the test rejects the null hypothesis, that the data are normal.
+The model is not performing very well.
+
+If manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, they are quite hard to identify and extremelly subjective. Using automatic methods will overcome that issue.
+
+Such methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
+
+In the next section, we are going to use a variation of the k-fold cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).
+
+# accurary,
+Now, we want to know how well our model forecast different forecast horizons.
+```{r}
+# k <- 12
+# start <- tsp(unadjusted.ts)[1] + k - 1
+# n <- length(unadjusted.ts)
+# mae <- matrix(NA,n-k-1,12)
+# 
+# mae <- matrix(NA,n-k-1,12)
+# for(i in 1:16) {
+#   
+#   end.train <- i - 1
+#   start.test <- i
+#   end.test <- (i+1)
+#   train <- window(unadjusted.ts, end=i)
+#   test <- window(unadjusted.ts, start=start.test, end=end.test)
+#   fit.arima = auto.arima(train)
+#   forecast.arima <- forecast(fit.arima, h=12)
+#   print(length(forecast.arima))
+#   print(length(test))
+#   length(forecast.arima[['mean']] - test)
+#   mae[i,1:length(test)] <- abs(forecast.arima[['mean']]-test)
+# } 
+# 
+# 
+#   start.train <- 1 + 5/12
+#   end.train <- 2
+#   end.test <- 3
+#   train <- window(unadjusted.ts, end=2)
+#   test <- window(unadjusted.ts, start=start.test, end=end.test)
+#   fit.arima = auto.arima(train)
+#   forecast.arima <- forecast(fit.arima, h=12)
+#   print(length(forecast.arima))
+#   print(length(test))
+#   length(forecast.arima[['mean']] - test)
+#   mae[i,1:length(test)] <- abs(forecast.arima[['mean']]-test)
+# 
+# 
+#   print(i)
+#   xshort <- window(unadjusted.ts,end=i+k*i)
+#   print(length(xshort))
+# }
+# 
+#   xnext <- window(unadjusted.ts,start=i+1,end=i+k)
+#   fit2 <- auto.arima(xshort, lambda=0)
+#   fcast2 <- forecast(fit2,h=12)
+#   fit3 <- ets(xshort)
+#   fcast3 <- forecast(fit3,h=12)
+#   mae2[i,] <- c(abs(fcast2$mean-xnext),rep(NA,12-length(xnext)))
+#   mae3[i,] <- c(abs(fcast3$mean-xnext),rep(NA,12-length(xnext)))
+# }
+# 
+# plot(1:12,colSums(mae3,na.rm=TRUE),type="l",col=4,xlab="horizon",ylab="MAE")
+# lines(1:12,colSums(mae2,na.rm=TRUE),type="l",col=3)
+# lines(1:12,colSums(mae1,na.rm=TRUE),type="l",col=2)
+# legend("topleft",legend=c("LM","ARIMA","ETS"),col=2:4,lty=1)
+
+```
+
+
+# model 
+
+```{r}
+#ARIMA(2,1,0)(1,0,0)[12]
+plot(forecast(auto.arima(unadjusted.ts, xreg=fourier(unadjusted.ts, K=5)),xreg=fourierf(unadjusted.ts, K=5, h=100)))
+
+
+```
+
 
 
