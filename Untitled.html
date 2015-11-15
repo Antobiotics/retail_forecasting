@@ -212,65 +212,385 @@ qqline(residuals(fit.estimated.model.unadjusted.data), col = 2)</code></pre>
 <p>the p-value is &lt; 0.05 so the test rejects the null hypothesis, that the data are normal. The model is not performing very well.</p>
 <p>If manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, they are quite hard to identify and extremelly subjective. Using automatic methods will overcome that issue.</p>
 <p>Such methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.</p>
-<p>In the next section, we are going to use a variation of the k-fold cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).</p>
+<p>In the next section, we are going to use a variation of the cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).</p>
+</div>
+<div id="cross-validation" class="section level3">
+<h3>Cross Validation:</h3>
+<p>forecast evaluation with a rolling origin</p>
 </div>
 </div>
 <div id="accurary" class="section level1">
 <h1>accurary,</h1>
 <p>Now, we want to know how well our model forecast different forecast horizons.</p>
-<pre class="r"><code># k &lt;- 12
-# start &lt;- tsp(unadjusted.ts)[1] + k - 1
-# n &lt;- length(unadjusted.ts)
-# mae &lt;- matrix(NA,n-k-1,12)
-# 
-# mae &lt;- matrix(NA,n-k-1,12)
-# for(i in 1:16) {
-#   
-#   end.train &lt;- i - 1
-#   start.test &lt;- i
-#   end.test &lt;- (i+1)
-#   train &lt;- window(unadjusted.ts, end=i)
-#   test &lt;- window(unadjusted.ts, start=start.test, end=end.test)
-#   fit.arima = auto.arima(train)
-#   forecast.arima &lt;- forecast(fit.arima, h=12)
-#   print(length(forecast.arima))
-#   print(length(test))
-#   length(forecast.arima[['mean']] - test)
-#   mae[i,1:length(test)] &lt;- abs(forecast.arima[['mean']]-test)
-# } 
-# 
-# 
-#   start.train &lt;- 1 + 5/12
-#   end.train &lt;- 2
-#   end.test &lt;- 3
-#   train &lt;- window(unadjusted.ts, end=2)
-#   test &lt;- window(unadjusted.ts, start=start.test, end=end.test)
-#   fit.arima = auto.arima(train)
-#   forecast.arima &lt;- forecast(fit.arima, h=12)
-#   print(length(forecast.arima))
-#   print(length(test))
-#   length(forecast.arima[['mean']] - test)
-#   mae[i,1:length(test)] &lt;- abs(forecast.arima[['mean']]-test)
-# 
-# 
-#   print(i)
-#   xshort &lt;- window(unadjusted.ts,end=i+k*i)
-#   print(length(xshort))
-# }
-# 
-#   xnext &lt;- window(unadjusted.ts,start=i+1,end=i+k)
-#   fit2 &lt;- auto.arima(xshort, lambda=0)
-#   fcast2 &lt;- forecast(fit2,h=12)
-#   fit3 &lt;- ets(xshort)
-#   fcast3 &lt;- forecast(fit3,h=12)
-#   mae2[i,] &lt;- c(abs(fcast2$mean-xnext),rep(NA,12-length(xnext)))
-#   mae3[i,] &lt;- c(abs(fcast3$mean-xnext),rep(NA,12-length(xnext)))
-# }
-# 
-# plot(1:12,colSums(mae3,na.rm=TRUE),type=&quot;l&quot;,col=4,xlab=&quot;horizon&quot;,ylab=&quot;MAE&quot;)
-# lines(1:12,colSums(mae2,na.rm=TRUE),type=&quot;l&quot;,col=3)
-# lines(1:12,colSums(mae1,na.rm=TRUE),type=&quot;l&quot;,col=2)
-# legend(&quot;topleft&quot;,legend=c(&quot;LM&quot;,&quot;ARIMA&quot;,&quot;ETS&quot;),col=2:4,lty=1)</code></pre>
+<pre class="r"><code>k &lt;- 12
+n &lt;- length(unadjusted.ts)
+
+frequency &lt;- tsp(unadjusted.ts)[3]
+start &lt;- tsp(unadjusted.ts)[1] + (k-2)/12
+end &lt;- tsp(unadjusted.ts)[2] - k/12
+
+mae.manual.arima &lt;- matrix(NA,ceiling(end-start)*12,12)
+mae.auto.arima &lt;- matrix(NA,ceiling(end-start)*12,12)
+mae.ets &lt;- matrix(NA,ceiling(end-start)*12,12)
+
+count &lt;- 0
+for(i in seq(start, end, by=1/12)) {
+  print('------')
+  print(count)
+  train &lt;- window(unadjusted.ts, end=i)
+  test &lt;- window(unadjusted.ts, start=i+1/12, end=i+k/12)
+
+  # manual model:
+#    fit.manual.arima &lt;- 
+#      arima(train,
+#          order=c(1, 0, 4),
+#          seasonal=list(order=c(0, 1, 1), period=12)
+#    )
+#    forecast.manual.arima &lt;- forecast(fit.manual.arima, h=12)
+#     
+  # auto.arima:  
+  fit.auto.arima &lt;- auto.arima(train)
+  forecast.auto.arima &lt;- forecast(fit.auto.arima, h=12)
+
+  # ETS
+  fit.ets &lt;- ets(train)
+  forecast.ets &lt;- forecast(fit.ets, h=12)
+  
+  # mae.manual.arima[i,1:length(test)] &lt;- abs(forecast.manual.arima[['mean']]-test)
+  mae.auto.arima[count,1:length(test)] &lt;- abs(forecast.auto.arima[['mean']]-test)
+  mae.ets[i,1:length(test)] &lt;- abs(forecast.ets[['mean']]-test)
+  count &lt;- count + 1
+} </code></pre>
+<pre><code>## [1] &quot;------&quot;
+## [1] 0
+## [1] &quot;------&quot;
+## [1] 1
+## [1] &quot;------&quot;
+## [1] 2
+## [1] &quot;------&quot;
+## [1] 3
+## [1] &quot;------&quot;
+## [1] 4
+## [1] &quot;------&quot;
+## [1] 5
+## [1] &quot;------&quot;
+## [1] 6
+## [1] &quot;------&quot;
+## [1] 7
+## [1] &quot;------&quot;
+## [1] 8
+## [1] &quot;------&quot;
+## [1] 9
+## [1] &quot;------&quot;
+## [1] 10
+## [1] &quot;------&quot;
+## [1] 11
+## [1] &quot;------&quot;
+## [1] 12
+## [1] &quot;------&quot;
+## [1] 13
+## [1] &quot;------&quot;
+## [1] 14
+## [1] &quot;------&quot;
+## [1] 15
+## [1] &quot;------&quot;
+## [1] 16
+## [1] &quot;------&quot;
+## [1] 17
+## [1] &quot;------&quot;
+## [1] 18
+## [1] &quot;------&quot;
+## [1] 19
+## [1] &quot;------&quot;
+## [1] 20
+## [1] &quot;------&quot;
+## [1] 21
+## [1] &quot;------&quot;
+## [1] 22
+## [1] &quot;------&quot;
+## [1] 23
+## [1] &quot;------&quot;
+## [1] 24
+## [1] &quot;------&quot;
+## [1] 25
+## [1] &quot;------&quot;
+## [1] 26
+## [1] &quot;------&quot;
+## [1] 27
+## [1] &quot;------&quot;
+## [1] 28
+## [1] &quot;------&quot;
+## [1] 29
+## [1] &quot;------&quot;
+## [1] 30
+## [1] &quot;------&quot;
+## [1] 31
+## [1] &quot;------&quot;
+## [1] 32
+## [1] &quot;------&quot;
+## [1] 33
+## [1] &quot;------&quot;
+## [1] 34
+## [1] &quot;------&quot;
+## [1] 35
+## [1] &quot;------&quot;
+## [1] 36
+## [1] &quot;------&quot;
+## [1] 37
+## [1] &quot;------&quot;
+## [1] 38
+## [1] &quot;------&quot;
+## [1] 39
+## [1] &quot;------&quot;
+## [1] 40
+## [1] &quot;------&quot;
+## [1] 41
+## [1] &quot;------&quot;
+## [1] 42
+## [1] &quot;------&quot;
+## [1] 43
+## [1] &quot;------&quot;
+## [1] 44
+## [1] &quot;------&quot;
+## [1] 45
+## [1] &quot;------&quot;
+## [1] 46
+## [1] &quot;------&quot;
+## [1] 47
+## [1] &quot;------&quot;
+## [1] 48
+## [1] &quot;------&quot;
+## [1] 49
+## [1] &quot;------&quot;
+## [1] 50
+## [1] &quot;------&quot;
+## [1] 51
+## [1] &quot;------&quot;
+## [1] 52
+## [1] &quot;------&quot;
+## [1] 53
+## [1] &quot;------&quot;
+## [1] 54
+## [1] &quot;------&quot;
+## [1] 55
+## [1] &quot;------&quot;
+## [1] 56
+## [1] &quot;------&quot;
+## [1] 57
+## [1] &quot;------&quot;
+## [1] 58
+## [1] &quot;------&quot;
+## [1] 59
+## [1] &quot;------&quot;
+## [1] 60
+## [1] &quot;------&quot;
+## [1] 61
+## [1] &quot;------&quot;
+## [1] 62
+## [1] &quot;------&quot;
+## [1] 63
+## [1] &quot;------&quot;
+## [1] 64
+## [1] &quot;------&quot;
+## [1] 65
+## [1] &quot;------&quot;
+## [1] 66
+## [1] &quot;------&quot;
+## [1] 67
+## [1] &quot;------&quot;
+## [1] 68
+## [1] &quot;------&quot;
+## [1] 69
+## [1] &quot;------&quot;
+## [1] 70
+## [1] &quot;------&quot;
+## [1] 71
+## [1] &quot;------&quot;
+## [1] 72
+## [1] &quot;------&quot;
+## [1] 73
+## [1] &quot;------&quot;
+## [1] 74
+## [1] &quot;------&quot;
+## [1] 75
+## [1] &quot;------&quot;
+## [1] 76
+## [1] &quot;------&quot;
+## [1] 77
+## [1] &quot;------&quot;
+## [1] 78
+## [1] &quot;------&quot;
+## [1] 79
+## [1] &quot;------&quot;
+## [1] 80
+## [1] &quot;------&quot;
+## [1] 81
+## [1] &quot;------&quot;
+## [1] 82
+## [1] &quot;------&quot;
+## [1] 83
+## [1] &quot;------&quot;
+## [1] 84
+## [1] &quot;------&quot;
+## [1] 85
+## [1] &quot;------&quot;
+## [1] 86
+## [1] &quot;------&quot;
+## [1] 87
+## [1] &quot;------&quot;
+## [1] 88
+## [1] &quot;------&quot;
+## [1] 89
+## [1] &quot;------&quot;
+## [1] 90
+## [1] &quot;------&quot;
+## [1] 91
+## [1] &quot;------&quot;
+## [1] 92
+## [1] &quot;------&quot;
+## [1] 93
+## [1] &quot;------&quot;
+## [1] 94
+## [1] &quot;------&quot;
+## [1] 95
+## [1] &quot;------&quot;
+## [1] 96
+## [1] &quot;------&quot;
+## [1] 97
+## [1] &quot;------&quot;
+## [1] 98
+## [1] &quot;------&quot;
+## [1] 99
+## [1] &quot;------&quot;
+## [1] 100
+## [1] &quot;------&quot;
+## [1] 101
+## [1] &quot;------&quot;
+## [1] 102
+## [1] &quot;------&quot;
+## [1] 103
+## [1] &quot;------&quot;
+## [1] 104
+## [1] &quot;------&quot;
+## [1] 105
+## [1] &quot;------&quot;
+## [1] 106
+## [1] &quot;------&quot;
+## [1] 107
+## [1] &quot;------&quot;
+## [1] 108
+## [1] &quot;------&quot;
+## [1] 109
+## [1] &quot;------&quot;
+## [1] 110
+## [1] &quot;------&quot;
+## [1] 111
+## [1] &quot;------&quot;
+## [1] 112
+## [1] &quot;------&quot;
+## [1] 113
+## [1] &quot;------&quot;
+## [1] 114
+## [1] &quot;------&quot;
+## [1] 115
+## [1] &quot;------&quot;
+## [1] 116
+## [1] &quot;------&quot;
+## [1] 117
+## [1] &quot;------&quot;
+## [1] 118
+## [1] &quot;------&quot;
+## [1] 119
+## [1] &quot;------&quot;
+## [1] 120
+## [1] &quot;------&quot;
+## [1] 121
+## [1] &quot;------&quot;
+## [1] 122
+## [1] &quot;------&quot;
+## [1] 123
+## [1] &quot;------&quot;
+## [1] 124
+## [1] &quot;------&quot;
+## [1] 125
+## [1] &quot;------&quot;
+## [1] 126
+## [1] &quot;------&quot;
+## [1] 127
+## [1] &quot;------&quot;
+## [1] 128
+## [1] &quot;------&quot;
+## [1] 129
+## [1] &quot;------&quot;
+## [1] 130
+## [1] &quot;------&quot;
+## [1] 131
+## [1] &quot;------&quot;
+## [1] 132
+## [1] &quot;------&quot;
+## [1] 133
+## [1] &quot;------&quot;
+## [1] 134
+## [1] &quot;------&quot;
+## [1] 135
+## [1] &quot;------&quot;
+## [1] 136
+## [1] &quot;------&quot;
+## [1] 137
+## [1] &quot;------&quot;
+## [1] 138
+## [1] &quot;------&quot;
+## [1] 139
+## [1] &quot;------&quot;
+## [1] 140
+## [1] &quot;------&quot;
+## [1] 141
+## [1] &quot;------&quot;
+## [1] 142
+## [1] &quot;------&quot;
+## [1] 143
+## [1] &quot;------&quot;
+## [1] 144
+## [1] &quot;------&quot;
+## [1] 145
+## [1] &quot;------&quot;
+## [1] 146
+## [1] &quot;------&quot;
+## [1] 147
+## [1] &quot;------&quot;
+## [1] 148
+## [1] &quot;------&quot;
+## [1] 149
+## [1] &quot;------&quot;
+## [1] 150
+## [1] &quot;------&quot;
+## [1] 151
+## [1] &quot;------&quot;
+## [1] 152
+## [1] &quot;------&quot;
+## [1] 153
+## [1] &quot;------&quot;
+## [1] 154
+## [1] &quot;------&quot;
+## [1] 155
+## [1] &quot;------&quot;
+## [1] 156
+## [1] &quot;------&quot;
+## [1] 157
+## [1] &quot;------&quot;
+## [1] 158
+## [1] &quot;------&quot;
+## [1] 159
+## [1] &quot;------&quot;
+## [1] 160
+## [1] &quot;------&quot;
+## [1] 161
+## [1] &quot;------&quot;
+## [1] 162
+## [1] &quot;------&quot;
+## [1] 163
+## [1] &quot;------&quot;
+## [1] 164</code></pre>
 </div>
 <div id="model" class="section level1">
 <h1>model</h1>

@@ -215,35 +215,37 @@ frequency <- tsp(unadjusted.ts)[3]
 start <- tsp(unadjusted.ts)[1] + (k-2)/12
 end <- tsp(unadjusted.ts)[2] - k/12
 
-mae.manual.arima <- matrix(NA,ceiling(end-start),12)
-mae.auto.arima <- matrix(NA,ceiling(end-start),12)
-mae.ets <- matrix(NA,ceiling(end-start),12)
+mae.manual.arima <- matrix(NA,ceiling(end-start)*12,12)
+mae.auto.arima <- matrix(NA,ceiling(end-start)*12,12)
+mae.ets <- matrix(NA,ceiling(end-start)*12,12)
 
+count <- 0
 for(i in seq(start, end, by=1/12)) {
   print('------')
+  print(count)
   train <- window(unadjusted.ts, end=i)
-  test <- window(unadjusted.ts, start=i+1/12, end=i+(k)/12)
+  test <- window(unadjusted.ts, start=i+1/12, end=i+k/12)
 
   # manual model:
-#   fit.manual.arima <- 
-#     arima(train,
-#         order=c(1, 0, 4),
-#         seasonal=list(order=c(0, 1, 1), period=12)
-#   )
-#   forecast.manual.arima <- forecast(fit.manual.arima, h=12)
-    
+#    fit.manual.arima <- 
+#      arima(train,
+#          order=c(1, 0, 4),
+#          seasonal=list(order=c(0, 1, 1), period=12)
+#    )
+#    forecast.manual.arima <- forecast(fit.manual.arima, h=12)
+#     
   # auto.arima:  
   fit.auto.arima <- auto.arima(train)
-  forecast.auto.arima <- forecast(fit.arima, h=10)
+  forecast.auto.arima <- forecast(fit.auto.arima, h=12)
 
   # ETS
-  # fit.ets <- ets(train)
-  # forecast.ets <- forecast(fit.ets, h=12)
-  
+  fit.ets <- ets(train)
+  forecast.ets <- forecast(fit.ets, h=12)
   
   # mae.manual.arima[i,1:length(test)] <- abs(forecast.manual.arima[['mean']]-test)
-  mae.auto.arima[i,1:length(test)] <- abs(forecast.auto.arima[['mean']]-test)
-  # mae.ets[i,1:length(test)] <- abs(forecast.ets[['mean']]-test)
+  mae.auto.arima[count, 1:length(test)] <- abs(forecast.auto.arima[['mean']]-test)
+  mae.ets[count, 1:length(test)] <- abs(forecast.ets[['mean']]-test)
+  count <- count + 1
 } 
 
 ```
