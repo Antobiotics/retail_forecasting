@@ -198,64 +198,53 @@ If manually estimating the parameters of the ARIMA model can be a good approach 
 
 Such methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
 
-In the next section, we are going to use a variation of the k-fold cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).
+In the next section, we are going to use a variation of the cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).
+
+### Cross Validation:
+
+forecast evaluation with a rolling origin
 
 # accurary,
 Now, we want to know how well our model forecast different forecast horizons.
-```{r}
-# k <- 12
-# start <- tsp(unadjusted.ts)[1] + k - 1
-# n <- length(unadjusted.ts)
-# mae <- matrix(NA,n-k-1,12)
-# 
-# mae <- matrix(NA,n-k-1,12)
-# for(i in 1:16) {
-#   
-#   end.train <- i - 1
-#   start.test <- i
-#   end.test <- (i+1)
-#   train <- window(unadjusted.ts, end=i)
-#   test <- window(unadjusted.ts, start=start.test, end=end.test)
-#   fit.arima = auto.arima(train)
-#   forecast.arima <- forecast(fit.arima, h=12)
-#   print(length(forecast.arima))
-#   print(length(test))
-#   length(forecast.arima[['mean']] - test)
-#   mae[i,1:length(test)] <- abs(forecast.arima[['mean']]-test)
-# } 
-# 
-# 
-#   start.train <- 1 + 5/12
-#   end.train <- 2
-#   end.test <- 3
-#   train <- window(unadjusted.ts, end=2)
-#   test <- window(unadjusted.ts, start=start.test, end=end.test)
-#   fit.arima = auto.arima(train)
-#   forecast.arima <- forecast(fit.arima, h=12)
-#   print(length(forecast.arima))
-#   print(length(test))
-#   length(forecast.arima[['mean']] - test)
-#   mae[i,1:length(test)] <- abs(forecast.arima[['mean']]-test)
-# 
-# 
-#   print(i)
-#   xshort <- window(unadjusted.ts,end=i+k*i)
-#   print(length(xshort))
-# }
-# 
-#   xnext <- window(unadjusted.ts,start=i+1,end=i+k)
-#   fit2 <- auto.arima(xshort, lambda=0)
-#   fcast2 <- forecast(fit2,h=12)
-#   fit3 <- ets(xshort)
-#   fcast3 <- forecast(fit3,h=12)
-#   mae2[i,] <- c(abs(fcast2$mean-xnext),rep(NA,12-length(xnext)))
-#   mae3[i,] <- c(abs(fcast3$mean-xnext),rep(NA,12-length(xnext)))
-# }
-# 
-# plot(1:12,colSums(mae3,na.rm=TRUE),type="l",col=4,xlab="horizon",ylab="MAE")
-# lines(1:12,colSums(mae2,na.rm=TRUE),type="l",col=3)
-# lines(1:12,colSums(mae1,na.rm=TRUE),type="l",col=2)
-# legend("topleft",legend=c("LM","ARIMA","ETS"),col=2:4,lty=1)
+```{r, warning=FALSE}
+
+k <- 12
+n <- length(unadjusted.ts)
+
+frequency <- tsp(unadjusted.ts)[3]
+start <- tsp(unadjusted.ts)[1] + (k-2)/12
+end <- tsp(unadjusted.ts)[2] - k/12
+
+mae.manual.arima <- matrix(NA,ceiling(end-start),12)
+mae.auto.arima <- matrix(NA,ceiling(end-start),12)
+mae.ets <- matrix(NA,ceiling(end-start),12)
+
+for(i in seq(start, end, by=1/12)) {
+  print('------')
+  train <- window(unadjusted.ts, end=i)
+  test <- window(unadjusted.ts, start=i+1/12, end=i+(k)/12)
+
+  # manual model:
+#   fit.manual.arima <- 
+#     arima(train,
+#         order=c(1, 0, 4),
+#         seasonal=list(order=c(0, 1, 1), period=12)
+#   )
+#   forecast.manual.arima <- forecast(fit.manual.arima, h=12)
+    
+  # auto.arima:  
+  fit.auto.arima <- auto.arima(train)
+  forecast.auto.arima <- forecast(fit.arima, h=10)
+
+  # ETS
+  # fit.ets <- ets(train)
+  # forecast.ets <- forecast(fit.ets, h=12)
+  
+  
+  # mae.manual.arima[i,1:length(test)] <- abs(forecast.manual.arima[['mean']]-test)
+  mae.auto.arima[i,1:length(test)] <- abs(forecast.auto.arima[['mean']]-test)
+  # mae.ets[i,1:length(test)] <- abs(forecast.ets[['mean']]-test)
+} 
 
 ```
 
