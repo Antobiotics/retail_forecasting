@@ -241,7 +241,6 @@ end <- tsp(unadjusted.ts)[2] - k/12
 
 default.matrix <- matrix(NA,ceiling(end-start)*12,12)
 
-mape.manual.arima <- default.matrix
 mape.auto.arima <- default.matrix
 mape.ets <- default.matrix
 mape.holt.winters <- default.matrix
@@ -251,14 +250,6 @@ start <- 3
 for(i in seq(start, end, by=1/12)) {
   train <- window(unadjusted.ts, end=i)
   test <- window(unadjusted.ts, start=i+1/12, end=i+k/12)
-
-  # manual model:
-  fit.manual.arima <- 
-    arima(train,
-        order=c(1, 0, 4),
-        seasonal=list(order=c(0, 1, 1), period=12)
-  )
-  forecast.manual.arima <- forecast(fit.manual.arima, h=12)
      
   # auto.arima:  
   fit.auto.arima <- auto.arima(train)
@@ -268,10 +259,9 @@ for(i in seq(start, end, by=1/12)) {
   fit.ets <- ets(train)
   forecast.ets <- forecast(fit.ets, h=12)
   
-  fit.holt.winters <- HoltWinters(train)
-  forecast.holt.winters <- forecast(fit.holt.winters)
+  fit.holt.winters <- HoltWinters(train, seasonal='additive')
+  forecast.holt.winters <- forecast(fit.holt.winters, h=12)
   
-  mape.manual.arima[i,1:length(test)] <- mape(test, forecast.manual.arima[['mean']])
   mape.auto.arima[count, 1:length(test)] <- mape(test, forecast.auto.arima[['mean']])
   mape.ets[count, 1:length(test)] <- mape(test, forecast.ets[['mean']])
   mape.holt.winters[count, 1:length(test)] <- mape(test, forecast.holt.winters[['mean']])
@@ -280,28 +270,12 @@ for(i in seq(start, end, by=1/12)) {
 
 mape.horizon <- data.frame(
   index=seq(1, dim(default.matrix)[2]),
-  manual=colMeans(mape.manual.arima, na.rm = TRUE),
   auto.arima=colMeans(mape.auto.arima, na.rm = TRUE),
   ets=colMeans(mape.ets, na.rm = TRUE),
   holt.winters=colMeans(mape.holt.winters, na.rm = TRUE)
 )
 
-mape.training <- data.frame(
-  index=seq(1,dim(mape.manual.arima)[1]),
-  manual=rowMeans(mape.manual.arima, na.rm = TRUE),
-  auto.arima=rowMeans(mape.auto.arima, na.rm = TRUE),
-  ets=rowMeans(mape.ets, na.rm = TRUE),
-  holt.winters=rowMeans(mape.holt.winters, na.rm = TRUE) 
-)
-
 ggplot(mape.horizon, aes(x=index)) +
-  geom_line(aes(y=manual, color='manual')) +
-  geom_line(aes(y=auto.arima, color='auto.arima')) +
-  geom_line(aes(y=ets, color='ets')) +
-  geom_line(aes(y=holt.winters, color='holt.winters'))
-
-ggplot(mape.training, aes(x=index)) +
-  geom_line(aes(y=manual, color='manual')) +
   geom_line(aes(y=auto.arima, color='auto.arima')) +
   geom_line(aes(y=ets, color='ets')) +
   geom_line(aes(y=holt.winters, color='holt.winters'))
