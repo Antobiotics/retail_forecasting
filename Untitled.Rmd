@@ -136,6 +136,23 @@ Because the seasonal pattern is strong and stable, we will want to use an order 
 
 ```{r}
 diff.residuals.ts <- diff(unadjusted.residuals.ts, lag=12)
+```
+
+
+Now, let's test that the transformed data trend stationary or if the data requires more levels of differentiation.
+```{r}
+list(
+  adf=adf.test(unadjusted.ts)$p.value < 0.05,
+  box=Box.test(unadjusted.ts, lag=12, type='Ljung-Box')$p.value < 0.05,
+  kpss=kpss.test(unadjusted.ts)$p.value > 0.05
+)
+```
+
+The three standard tests for stationarity seem to indicate we don't need to differenciate the data more.
+
+
+We can then start to anaylise the data in order to estimate a model.
+```{r}
 tsdisplay(diff.residuals.ts)
 ```
 
@@ -191,12 +208,21 @@ Since successive forecast errors seem to be sligthly correlated, and the forecas
 ```{r}
 shapiro.test(residuals(fit.estimated.model.unadjusted.data))
 ```
-the p-value is < 0.05 so the test rejects the null hypothesis, that the data are normal.
-The model is not performing very well.
+the p-value is < 0.05 so the test rejects the null hypothesis that the data are normal.
+The fact that ACF/PACF plots show corrlation in the errors and their distribution is not normal shows that
+the model is not performing very well and thus can be improved upon.
 
-If manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, they are quite hard to identify and extremelly subjective. Using automatic methods will overcome that issue.
+Another way of testing whether there is significant evidence of non-zero correlation is to perform a Ljung-Box test.
 
-Such methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
+```{r}
+Box.test(residuals(fit.estimated.model.unadjusted.data), lag=20, type="Ljung-Box")
+```
+
+The p-value is 9.396e-06 which is an evidence that of non-zero autocorrelation in the forecast errors.
+
+Manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, but they are quite hard to identify and extremelly subjective. Using automatic methods should overcome that issue.
+
+Automatic methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
 
 In the next section, we are going to use a variation of the cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).
 
@@ -221,8 +247,6 @@ mae.ets <- matrix(NA,ceiling(end-start)*12,12)
 
 count <- 0
 for(i in seq(start, end, by=1/12)) {
-  print('------')
-  print(count)
   train <- window(unadjusted.ts, end=i)
   test <- window(unadjusted.ts, start=i+1/12, end=i+k/12)
 
