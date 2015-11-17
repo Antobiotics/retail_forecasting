@@ -13,13 +13,12 @@ Definition: Retail trade is defined in the International Standard Industrial Cla
 By researching the [Statistics Canada help page](http://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=2406), we note that that seasonally adjusted data is built using the X-12-ARIMA method.
 
 ```{r, echo=FALSE, message=FALSE}
-library(plyr)
-library(dplyr)
-library(xts)
-library(zoo)
-library(ggplot2)
-library(forecast)
-library(tseries)
+# Setup and load required packages.
+if(!require("pacman")) {
+  install.packages("pacman")
+}
+
+pacman::p_load(plyr, dplyr, xts, zoo, ggplot2, forecast, tseries)
 ```
 ## Preliminaries:
 
@@ -68,6 +67,10 @@ From here, we can note a few observations:
 * The time plot shows a sudden change, particulary in 2009.
 * The variability of the seasonal components seems constant.
 
+the fluctuations around this trend
+have the same intensity
+
+Additive model?
 
 We want to build a model that can forecast unadjusted retail sales data, let's create timeseries objects for
 that data.
@@ -95,15 +98,19 @@ Moreover, if we have a look at the Autocorrelation function (ACF) and the Partia
 signature of a non-stationary time series.
 
 ```{r}
-tsdisplay(unadjusted.ts)
+tsdisplay(unadjusted.ts, lag=48)
 ```
+
+Note that the seasonal lags of the PACF and ACF show:
+ * exponential decay in the seasonal lags of the ACF
+ * a single significant spike at lag 12 in the PACF.
 
 Thus, we can safely assume the data is not stationary which means we need to transform the data such that 
 our process is stationary on mean and variance.
 
 Since non stationary a good idea would be to model the data using an ARIMA process, the most general class of models for forecasting a time series which can be transformed to be “stationary” by differenciation, log transformation or by taking the residuals of a linear regression.
 
-### Stationarising:
+### Transforming the unadjusted retail sales data:
 
 The next step is to transform the data to make it stationary.
 
@@ -132,10 +139,10 @@ tsdisplay(unadjusted.residuals.ts)
 From that plot, we remark that is a seasonal component available with a 12 lag period (see lags 12, 24, 36, etc...)
 
 The goal now is to identify presence of AR and MA components in the residuals.
-Because the seasonal pattern is strong and stable, we will want to use an order of seasonal differencing in the model. This, we seasonallly differentiate the residuals with a lat of 12 months.
+Because the seasonal pattern is strong and stable, we will want to use an order of seasonal differencing in the model. This, we seasonallly differentiate the residuals with a lag of 12 months.
 
 ```{r}
-diff.residuals.ts <- diff(unadjusted.residuals.ts, lag=12)
+diff.residuals.ts <- diff(unadjusted.residuals.ts, 1, lag=12)
 ```
 
 
@@ -152,73 +159,59 @@ The three standard tests for stationarity seem to indicate we don't need to diff
 
 
 We can then start to anaylise the data in order to estimate a model.
+
+### Esitmating an ARIMA model:
+
 ```{r}
 tsdisplay(diff.residuals.ts)
 ```
 
 From the partial autocorrelogram, we see that the partial autocorrelation at `lag 1` is positive and exceeds the significance bounds (~0.5), while the partial autocorrelation at `lag 4` is negative and also exceeds the significance bounds (~-0.3). The partial autocorrelations tail off to zero after lag 4.
+Finally, there are three significant spikes in the PACF suggesting a possible AR(3) term. The pattern in the ACF is not indicative of any simple model.
 
-Suggest a model blah blah...
-The MA(q) process Xt has ρk = 0 for all k, |k| > q. So a diagnostic for MA(q) is
-that |rk| drops to near zero beyond some threshold.
-Try to fit....
-
-Let's fit the estimated on the transformed data:
-
+We can then try to fit our estimated model on the unadjusted retail sales data:
 ```{r}
 fit.estimated.model <-
-  arima(diff.residuals.ts,
-        order=c(1, 0, 4),
-        seasonal=list(order=c(0, 1, 1), period=12)
+  arima(unadjusted.ts,
+        order=c(3, 0, 4),
+        seasonal=list(order=c(2, 1, 2), period=12)
   )
 
 fit.estimated.model
 plot(acf(residuals(fit.estimated.model)))
 ```
+Let's test whether there is significant evidence of non-zero correlation with a Ljung-Box test.
 
-We can then try to fit our estimated model on the unadjusted retail sales data:
 ```{r}
-fit.estimated.model.unadjusted.data <-
-  arima(unadjusted.ts,
-        order=c(1, 0, 4),
-        seasonal=list(order=c(1, 1, 0), period=12)
-  )
-
-fit.estimated.model.unadjusted.data
+Box.test(residuals(fit.estimated.model), lag=20, type="Ljung-Box")
 ```
 
+The p-value is 0.2292. There is no evidence of non-zero autocorrelation in the forecast errors.
+
 ```{r}
-plot(forecast(fit.estimated.model.unadjusted.data))
+plot(forecast(fit.estimated.model))
 ```
 
 ```{r}
 par(mfrow=c(2,2))
-plot(acf(residuals(fit.estimated.model.unadjusted.data)))
-plot(density(residuals(fit.estimated.model.unadjusted.data)))
-qqnorm(residuals(fit.estimated.model.unadjusted.data))
-qqline(residuals(fit.estimated.model.unadjusted.data), col = 2)
+plot(acf(residuals(fit.estimated.model)))
+plot(density(residuals(fit.estimated.model)))
+qqnorm(residuals(fit.estimated.model))
+qqline(residuals(fit.estimated.model), col = 2)
 ```
 
 ```{r, echo=FALSE, message=FALSE}
 par(mfrow=c(1,1))
 ```
 
-Since successive forecast errors seem to be sligthly correlated, and the forecast errors seem to be normally distributed with mean zero and constant variance, the ARIMA(0,1,1) does seem to provide an adequate predictive model.
+The successive forecast errors doesn't seem to be  auto-correlated.  The forecast errors seem to be normally distributed but has notable deviations from the straight line are signature of a light left tailed distribution (the density plot confirms this intuition)
 
 ```{r}
-shapiro.test(residuals(fit.estimated.model.unadjusted.data))
+shapiro.test(residuals(fit.estimated.model))
 ```
 the p-value is < 0.05 so the test rejects the null hypothesis that the data are normal.
-The fact that ACF/PACF plots show corrlation in the errors and their distribution is not normal shows that
-the model is not performing very well and thus can be improved upon.
+The fact that ACF/PACF plots does not show correlation in the errors and their distribution is not normal shows that the model is not performing very well and thus can be improved upon.
 
-Another way of testing whether there is significant evidence of non-zero correlation is to perform a Ljung-Box test.
-
-```{r}
-Box.test(residuals(fit.estimated.model.unadjusted.data), lag=20, type="Ljung-Box")
-```
-
-The p-value is 9.396e-06 which is an evidence that of non-zero autocorrelation in the forecast errors.
 
 Manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, but they are quite hard to identify and extremelly subjective. Using automatic methods should overcome that issue.
 
@@ -232,7 +225,12 @@ forecast evaluation with a rolling origin
 
 # accurary,
 Now, we want to know how well our model forecast different forecast horizons.
+Mean absolute percentage error
 ```{r, warning=FALSE}
+
+mape <- function(actual, forecast) {
+  return(abs((actual-forecast)/actual))
+}
 
 k <- 12
 n <- length(unadjusted.ts)
@@ -241,23 +239,27 @@ frequency <- tsp(unadjusted.ts)[3]
 start <- tsp(unadjusted.ts)[1] + (k-2)/12
 end <- tsp(unadjusted.ts)[2] - k/12
 
-mae.manual.arima <- matrix(NA,ceiling(end-start)*12,12)
-mae.auto.arima <- matrix(NA,ceiling(end-start)*12,12)
-mae.ets <- matrix(NA,ceiling(end-start)*12,12)
+default.matrix <- matrix(NA,ceiling(end-start)*12,12)
+
+mape.manual.arima <- default.matrix
+mape.auto.arima <- default.matrix
+mape.ets <- default.matrix
+mape.holt.winters <- default.matrix
 
 count <- 0
+start <- 3
 for(i in seq(start, end, by=1/12)) {
   train <- window(unadjusted.ts, end=i)
   test <- window(unadjusted.ts, start=i+1/12, end=i+k/12)
 
   # manual model:
-#    fit.manual.arima <- 
-#      arima(train,
-#          order=c(1, 0, 4),
-#          seasonal=list(order=c(0, 1, 1), period=12)
-#    )
-#    forecast.manual.arima <- forecast(fit.manual.arima, h=12)
-#     
+  fit.manual.arima <- 
+    arima(train,
+        order=c(1, 0, 4),
+        seasonal=list(order=c(0, 1, 1), period=12)
+  )
+  forecast.manual.arima <- forecast(fit.manual.arima, h=12)
+     
   # auto.arima:  
   fit.auto.arima <- auto.arima(train)
   forecast.auto.arima <- forecast(fit.auto.arima, h=12)
@@ -266,11 +268,43 @@ for(i in seq(start, end, by=1/12)) {
   fit.ets <- ets(train)
   forecast.ets <- forecast(fit.ets, h=12)
   
-  # mae.manual.arima[i,1:length(test)] <- abs(forecast.manual.arima[['mean']]-test)
-  mae.auto.arima[count, 1:length(test)] <- abs(forecast.auto.arima[['mean']]-test)
-  mae.ets[count, 1:length(test)] <- abs(forecast.ets[['mean']]-test)
+  fit.holt.winters <- HoltWinters(train)
+  forecast.holt.winters <- forecast(fit.holt.winters)
+  
+  mape.manual.arima[i,1:length(test)] <- mape(test, forecast.manual.arima[['mean']])
+  mape.auto.arima[count, 1:length(test)] <- mape(test, forecast.auto.arima[['mean']])
+  mape.ets[count, 1:length(test)] <- mape(test, forecast.ets[['mean']])
+  mape.holt.winters[count, 1:length(test)] <- mape(test, forecast.holt.winters[['mean']])
   count <- count + 1
 } 
+
+mape.horizon <- data.frame(
+  index=seq(1, dim(default.matrix)[2]),
+  manual=colMeans(mape.manual.arima, na.rm = TRUE),
+  auto.arima=colMeans(mape.auto.arima, na.rm = TRUE),
+  ets=colMeans(mape.ets, na.rm = TRUE),
+  holt.winters=colMeans(mape.holt.winters, na.rm = TRUE)
+)
+
+mape.training <- data.frame(
+  index=seq(1,dim(mape.manual.arima)[1]),
+  manual=rowMeans(mape.manual.arima, na.rm = TRUE),
+  auto.arima=rowMeans(mape.auto.arima, na.rm = TRUE),
+  ets=rowMeans(mape.ets, na.rm = TRUE),
+  holt.winters=rowMeans(mape.holt.winters, na.rm = TRUE) 
+)
+
+ggplot(mape.horizon, aes(x=index)) +
+  geom_line(aes(y=manual, color='manual')) +
+  geom_line(aes(y=auto.arima, color='auto.arima')) +
+  geom_line(aes(y=ets, color='ets')) +
+  geom_line(aes(y=holt.winters, color='holt.winters'))
+
+ggplot(mape.training, aes(x=index)) +
+  geom_line(aes(y=manual, color='manual')) +
+  geom_line(aes(y=auto.arima, color='auto.arima')) +
+  geom_line(aes(y=ets, color='ets')) +
+  geom_line(aes(y=holt.winters, color='holt.winters'))
 
 ```
 
