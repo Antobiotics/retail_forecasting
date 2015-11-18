@@ -1,7 +1,8 @@
 ---
-title: "CanadianRetailSales"
-output: 
-  html_document: 
+title: "Forecasting of the Canadian Retail Sales from 2000 to 2015"
+output:
+  pdf_document: default
+  html_document:
     fig_width: 10
 ---
 
