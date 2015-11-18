@@ -428,5 +428,7 @@ error
 
 In order to forecast the canadian retail sales we first started by estimating an ARIMA model manually and saw that by fine tuning exogeneous regressors one could improve its forecasting capabilities. Then, we saw that in order to elect a good forecasting model one should evaluate the perfomance of the model not on historical data but on data that weren't used to fit the model. A cross-validation procedure, allowed us to choose a model based on several criterions.
 
+Finally, if the proposed model has good forecasting capabilities in the short term, it could be improved. The current model doesn't take into account key elements that define Retail Sales, the type of goods for examples and doesn't have any explanatory power. 
 
+Different goods have different dynamics and sensibilities, same for regions or cities were different scaling laws may apply in a forecasting model. Those data are available on the Statistics Canada website, it would be interesting to try a model taking into account those data. In that case multiple regression based models or multi-agent based could be used.
 
