@@ -1,7 +1,14 @@
 ---
 title: "CanadianRetailSales"
-output: html_document
+output: 
+  html_document: 
+    fig_width: 10
 ---
+
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 1000)
+```
 
 In this document we develop a simple forecasting model of Canadian Retail Sales.
 The first thing I done was to look at the data you provided. It describes unadjusted and seasonally adjusted Monthly Retail Trades in Canada from **January 2000** to **July 2015**.
@@ -18,7 +25,7 @@ if(!require("pacman")) {
   install.packages("pacman")
 }
 
-pacman::p_load(plyr, dplyr, xts, zoo, ggplot2, forecast, tseries)
+pacman::p_load(plyr, dplyr, xts, zoo, ggplot2, forecast, tseries, seasonal, gridExtra)
 ```
 ## Preliminaries:
 
@@ -67,17 +74,16 @@ From here, we can note a few observations:
 * The time plot shows a sudden change, particulary in 2009.
 * The variability of the seasonal components seems constant.
 
-the fluctuations around this trend
-have the same intensity
-
-Additive model?
-
 We want to build a model that can forecast unadjusted retail sales data, let's create timeseries objects for
 that data.
 
 ```{r}
 unadjusted.ts <- ts(data$unadjusted, frequency=12)
 ```
+
+The unadjusted retail sales data seem to be a good candidate for an ARIMA model, such models predict a value in a time series as a linear combination of its own past values and past errors.
+
+ARIMA models have three parts, the autoregression part (AR), the integration part (I) and the moving average part (MA). The main assumption surrounding the autoregression part is that values depend on some linear combination of previous values up to a maximum lag in conjonction with random error term. The MA part is based on the fact that the observed value is a random error term plus some linear combination of previous random error terms up to a maximum lag. 
 
 ### Stationarity:
 From those observations, we can suppose that our time series is not stationary process.
@@ -112,7 +118,7 @@ Since non stationary a good idea would be to model the data using an ARIMA proce
 
 ### Transforming the unadjusted retail sales data:
 
-The next step is to transform the data to make it stationary.
+The next step is to transform the data to make it stationary. In fact, in order to analyse a time series to estimate an ARIMA model, the common procedure requires the time series to be stationary.
 
 The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the
 data.
@@ -147,6 +153,7 @@ diff.residuals.ts <- diff(unadjusted.residuals.ts, 1, lag=12)
 
 
 Now, let's test that the transformed data trend stationary or if the data requires more levels of differentiation.
+
 ```{r}
 list(
   adf=adf.test(unadjusted.ts)$p.value < 0.05,
@@ -157,8 +164,7 @@ list(
 
 The three standard tests for stationarity seem to indicate we don't need to differenciate the data more.
 
-
-We can then start to anaylise the data in order to estimate a model.
+We can then start to anaylise the transformed data in order to estimate a model.
 
 ### Esitmating an ARIMA model:
 
@@ -172,7 +178,7 @@ Finally, there are three significant spikes in the PACF suggesting a possible AR
 We can then try to fit our estimated model on the unadjusted retail sales data:
 ```{r}
 fit.estimated.model <-
-  arima(unadjusted.ts,
+  Arima(unadjusted.ts,
         order=c(3, 0, 4),
         seasonal=list(order=c(2, 1, 2), period=12)
   )
@@ -180,6 +186,7 @@ fit.estimated.model <-
 fit.estimated.model
 plot(acf(residuals(fit.estimated.model)))
 ```
+
 Let's test whether there is significant evidence of non-zero correlation with a Ljung-Box test.
 
 ```{r}
@@ -188,9 +195,12 @@ Box.test(residuals(fit.estimated.model), lag=20, type="Ljung-Box")
 
 The p-value is 0.2292. There is no evidence of non-zero autocorrelation in the forecast errors.
 
+The following plot shows forecasting results of the estimated model:
 ```{r}
 plot(forecast(fit.estimated.model))
 ```
+
+To do understand how well the model performed, we need to look at the distribution of the residuals of the fitted model:
 
 ```{r}
 par(mfrow=c(2,2))
@@ -209,44 +219,119 @@ The successive forecast errors doesn't seem to be  auto-correlated.  The forecas
 ```{r}
 shapiro.test(residuals(fit.estimated.model))
 ```
+
 the p-value is < 0.05 so the test rejects the null hypothesis that the data are normal.
 The fact that ACF/PACF plots does not show correlation in the errors and their distribution is not normal shows that the model is not performing very well and thus can be improved upon.
 
-
+### Improving the ARIMA approach
 Manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, but they are quite hard to identify and extremelly subjective. Using automatic methods should overcome that issue.
 
 Automatic methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
 
-In the next section, we are going to use a variation of the cross validation adapted to the context of time series forecasting. We will compare different modelling approaches, ARIMA, auto.arima and exponential smoothing (they extrapolate nonseasonal patterns and trends can be extrapolated using a smoothing model).
+An other step would be to introduce variables based on subjective understanding of the data. In the case of retail sales, it seems natural to assume that the retail sales would significantly increase in the Christmas or Easter holidays periods for example. Obviously, domain knowlodge and research is key here and more sofisticated variables can be introduced. ARIMA models allow the introduction of such variables.
+
+Let's assume the month has an effect on the retail sales. The following plot can give a rough idea of the monthly variations:
+
+```{r}
+seasonplot(unadjusted.residuals.ts)
+```
+
+In `R` a function `seasonaldummy` generates those variables for us but it can be easily done manually
+
+```{r}
+months <- data.frame(months(data$adjustments))
+colnames(months) <- c('month')
+
+holidays.regressor.df <-
+  months %>%
+  mutate(has.holidays=ifelse(month == 'December' | month == 'May', 1, 0))
+
+```
+
+```{r, warning=FALSE}
+
+order <- c(1, 1, 4)
+seasonal.order <- c(0, 0, 2)
+
+fit.arima <-
+Arima(unadjusted.ts,
+    order=order,
+    seasonal=list(order=seasonal.order, period=12)
+  )
+
+fit.arima.christmas.easter <-
+Arima(unadjusted.ts,
+    order=order,
+    seasonal=list(order=seasonal.order, period=12),
+    xreg=holidays.regressor.df$has.holidays
+  )  
+
+fit.arima.seasonal.dummy <-
+Arima(unadjusted.ts,
+    order=order,
+    seasonal=list(order=seasonal.order, period=12),
+    xreg=seasonaldummy(unadjusted.ts)
+  )
+
+
+
+accuracy(fit.arima)
+accuracy(fit.arima.christmas.easter)
+accuracy(fit.arima.seasonal.dummy)
+
+par(mfrow=c(2,1))
+plot(forecast(fit.arima, h=36))
+plot(forecast(fit.arima.seasonal.dummy, xreg=seasonaldummyf(unadjusted.ts, h=36)))
+```
+
+```{r, echo=FALSE, message=FALSE}
+par(mfrow=c(1,1))
+```
 
 ### Cross Validation:
 
-forecast evaluation with a rolling origin
+In order to choose the best approach to model our data set, we can not only based our decision on how well the model fits historical data. The accuracy of a forecasting should be determined by considering how well a model performs on new data that were not used when fitting the model.
 
-# accurary,
-Now, we want to know how well our model forecast different forecast horizons.
-Mean absolute percentage error
-```{r, warning=FALSE}
+To do so, we are going to use a variation of the cross validation adapted to the context of time series forecasting, it is equivalent to evaluate forecasting models with a rolling origin. And look at different evaluation metrics on different at "horizons". The main question being when evaluating a forecasting model,
+how well does the model forecasts after 1 months, 2 months and so on.
+
+We are mostly interesting in two metrics:
+
+* The Mean Absolute Percentage Error (MAPE) which is a scale-independent measure of the forecasting errors.
+* And, the Mean Absolute Scaled Error ([MASE](https://en.wikipedia.org/wiki/Mean_absolute_scaled_error)). MASE has the property that it is greater than one if the forecast is worse than the average naïve forecast.
+
+To compute MAPE and MASE, we define two functions that computes the MAPE and the Mean Average Error (MAE)
+```{r}
 
 mape <- function(actual, forecast) {
   return(abs((actual-forecast)/actual))
 }
 
+mae <- function(actual, forecast) {
+  return(abs(actual-forecast))
+}
+
+```
+
+
+The following procedure computes MASE and MAPE for cross-validation:
+
+```{r cv, cache=TRUE, warning=FALSE}
 k <- 12
 n <- length(unadjusted.ts)
 
 frequency <- tsp(unadjusted.ts)[3]
-start <- tsp(unadjusted.ts)[1] + (k-2)/12
+start <- 3
 end <- tsp(unadjusted.ts)[2] - k/12
 
 default.matrix <- matrix(NA,ceiling(end-start)*12,12)
 
-mape.auto.arima <- default.matrix
-mape.ets <- default.matrix
-mape.holt.winters <- default.matrix
+mape.auto.arima <- mase.auto.arima <- mae.auto.arima <- default.matrix
+mape.ets <- mase.ets <- mae.ets <- default.matrix
+mape.holt.winters <- mase.holt.winters <- mae.holt.winters <- default.matrix
 
 count <- 0
-start <- 3
+
 for(i in seq(start, end, by=1/12)) {
   train <- window(unadjusted.ts, end=i)
   test <- window(unadjusted.ts, start=i+1/12, end=i+k/12)
@@ -258,15 +343,30 @@ for(i in seq(start, end, by=1/12)) {
   # ETS
   fit.ets <- ets(train)
   forecast.ets <- forecast(fit.ets, h=12)
-  
+ 
+  # Holt-Winters 
   fit.holt.winters <- HoltWinters(train, seasonal='additive')
   forecast.holt.winters <- forecast(fit.holt.winters, h=12)
   
   mape.auto.arima[count, 1:length(test)] <- mape(test, forecast.auto.arima[['mean']])
   mape.ets[count, 1:length(test)] <- mape(test, forecast.ets[['mean']])
   mape.holt.winters[count, 1:length(test)] <- mape(test, forecast.holt.winters[['mean']])
+  
+  mae.auto.arima[count, 1:length(test)] <- mae(test, forecast.auto.arima[['mean']])
+  mae.ets[count, 1:length(test)] <- mae(test, forecast.ets[['mean']])
+  mae.holt.winters[count, 1:length(test)] <- mae(test, forecast.holt.winters[['mean']])
+  
   count <- count + 1
 } 
+
+mase.auto.arima <- mae.auto.arima / mean(abs(diff(unadjusted.ts, lag=12)))
+mase.ets <- mae.ets / mean(abs(diff(unadjusted.ts, lag=12)))
+mase.holt.winters <- mae.holt.winters / mean(abs(diff(unadjusted.ts, lag=12)))
+```
+
+Now we can plot the results:
+
+```{r}
 
 mape.horizon <- data.frame(
   index=seq(1, dim(default.matrix)[2]),
@@ -275,22 +375,41 @@ mape.horizon <- data.frame(
   holt.winters=colMeans(mape.holt.winters, na.rm = TRUE)
 )
 
-ggplot(mape.horizon, aes(x=index)) +
+mase.horizon <- data.frame(
+  index=seq(1, dim(default.matrix)[2]),
+  auto.arima=colMeans(mase.auto.arima, na.rm = TRUE),
+  ets=colMeans(mase.ets, na.rm = TRUE),
+  holt.winters=colMeans(mase.holt.winters, na.rm = TRUE)
+)
+
+g.mape <-
+  ggplot(mape.horizon, aes(x=index)) +
   geom_line(aes(y=auto.arima, color='auto.arima')) +
   geom_line(aes(y=ets, color='ets')) +
-  geom_line(aes(y=holt.winters, color='holt.winters'))
+  geom_line(aes(y=holt.winters, color='holt.winters')) +
+  labs(title="Horizon Plot for MAPE", x="Horizon", y="MAPE", color="Method")
+  
+
+g.mase <- 
+  ggplot(mase.horizon, aes(x=index)) +
+  geom_line(aes(y=auto.arima, color='auto.arima')) +
+  geom_line(aes(y=ets, color='ets')) +
+  geom_line(aes(y=holt.winters, color='holt.winters')) +
+  labs(title="Horizon Plot for MASE", x="Horizon", y="MASE", color="Method")
+
+grid.arrange(g.mape, g.mase, ncol=2)
 
 ```
 
+The results compare forecasting results for 3 different families of forecasting methods:
+* auto.ARIMA
+* ETS, an automatic procedure that find the best forecasting method between all Exponential Smoothing Models: Simple exponential smoothing, Holt’s method, Exponential trend method and Holt-Winters. One advantage of the exponential smoothing models is that they can be non-linear. So time series that exhibit non-linear characteristics may be better modelled using exponential smoothing state space models.
+* Holt-Winters additive methods (we focus on the additive methodology because the fluctuations around the trend look constant over time.) A special case of Exponential Smoothing particulary (Triple exponential smoothing) efficient to model seasonal time series. The smoothing parameters are infered by decomposing the time series in terms of a trend and seasonal component using moving averages.
 
-# model 
+It seems clear that Holt-Winters Method performs the best. One interesting point we can note from those plots is that when MAPE/MASE linearly grow as the horizon gets larger for ETS methods, ARIMA and especially Holt-Winters plateau.
 
 ```{r}
-#ARIMA(2,1,0)(1,0,0)[12]
-plot(forecast(auto.arima(unadjusted.ts, xreg=fourier(unadjusted.ts, K=5)),xreg=fourierf(unadjusted.ts, K=5, h=100)))
-
-
+fit.holt.winters <- HoltWinters(unadjusted.ts, seasonal='additive')
+forecast.holt.winters <- forecast(fit.holt.winters, h=36)
+plot(forecast.holt.winters) 
 ```
-
-
-
