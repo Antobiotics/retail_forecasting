@@ -1,5 +1,5 @@
 ---
-title: "Forecasting of the Canadian Retail Sales from 2000 to 2015"
+title: "Forecasting the Canadian Retail Sales"
 output:
   pdf_document: 
     fig_width: 10
@@ -12,10 +12,7 @@ output:
 options(width = 1000)
 ```
 
-In this document we develop a simple forecasting model of Canadian Retail Sales.
-The first thing I done was to look at the data you provided. It describes unadjusted and seasonally adjusted Monthly Retail Trades in Canada from **January 2000** to **July 2015**.
-
-Looking at the date the data were accessed the 20th of October 2015. Looking at the Statistics Canada website, I first noticed that the data were last modified the 22nd of October 2015 and that the numbers were slightly different.
+In this document we develop a simple forecasting model of Canadian Retail Sales. The data describes unadjusted and seasonally adjusted Monthly Retail Trades in Canada from **January 2000** to **July 2015**.
 
 Definition: Retail trade is defined in the International Standard Industrial Classification (ISIC) as the re-sale (sale without transformation) of new and used goods to the general public, for personal or household consumption or utilisation.
 
@@ -29,11 +26,10 @@ if(!require("pacman")) {
 
 pacman::p_load(plyr, dplyr, xts, zoo, ggplot2, forecast, tseries, seasonal, gridExtra)
 ```
-## Preliminaries:
 
 ### Formatting the data:
 
-First the data provided is not ideal for an analysis using R so I had to reformat it.
+First the data provided is not ideal for an analysis using R so we need to reformat it.
 
 ```{r}
 base.data <- read.csv('./data/cansim__Jan-2000_Jul-2015.csv', header=FALSE)
@@ -52,11 +48,8 @@ data <-
                         as.character(x=paste("01-", adjustments, sep="")),
                         format="%d-%b-%Y")
          )# Converts the adjustments. You need to paste a day to be able to convert such format to a date.
+
 ```
-
-
-
-Now it will be easier to work with such format.
 
 ### First look at the data:
 
@@ -83,12 +76,18 @@ that data.
 unadjusted.ts <- ts(data$unadjusted, frequency=12)
 ```
 
-The unadjusted retail sales data seem to be a good candidate for an ARIMA model, such models predict a value in a time series as a linear combination of its own past values and past errors.
+The unadjusted retail sales data seem to be a good candidate for an ARIMA model
 
-ARIMA models have three parts, the autoregression part (AR), the integration part (I) and the moving average part (MA). The main assumption surrounding the autoregression part is that values depend on some linear combination of previous values up to a maximum lag in conjonction with random error term. The MA part is based on the fact that the observed value is a random error term plus some linear combination of previous random error terms up to a maximum lag. 
+ARIMA models have three parts, the autoregression part (AR), the integration part (I) and the moving average part (MA). 
+The main assumption behind the AR part is that observed values depend on some linear combination of previous values up to a maximum lag in conjonction with random error term. 
+The MA part is based on the fact that the observed value is a random error term plus some linear combination of previous random error terms up to a maximum lag. 
+
+In order to analyse a time series to estimate an ARIMA model, the common procedure requires the timeseries to be stationary.
 
 ### Stationarity:
-From those observations, we can suppose that our time series is not stationary process.
+
+It is clear from the observations made in the previous section that the Retail Sales data are not stationary.
+
 But let's test that assumption using the **Augmented Dickey-Fuller Test**, the **Box test** and the **KPSS test**.
 
 
@@ -102,7 +101,8 @@ results.unadjusted
 ```
 
 From those test, we note that the three tests don't give the same results of stationarity.
-Moreover, if we have a look at the Autocorrelation function (ACF) and the Partial autocorrelation function (PACF) of our data. The ACF shows large autocorrelations that diminish very slowly at large lags. This is usually the
+
+If we have a look at the Autocorrelation function (ACF) and the Partial autocorrelation function (PACF) of our data. The ACF shows large autocorrelations that diminish very slowly at large lags. This is usually the
 signature of a non-stationary time series.
 
 ```{r}
@@ -110,17 +110,14 @@ tsdisplay(unadjusted.ts, lag=48)
 ```
 
 Note that the seasonal lags of the PACF and ACF show:
+
  * exponential decay in the seasonal lags of the ACF
  * a single significant spike at lag 12 in the PACF.
 
 Thus, we can safely assume the data is not stationary which means we need to transform the data such that 
-our process is stationary on mean and variance.
-
-Since non stationary a good idea would be to model the data using an ARIMA process, the most general class of models for forecasting a time series which can be transformed to be stationary by differenciation, log transformation or by taking the residuals of a linear regression.
+our process is stationary on mean and variance. This can be done via a series of differenciations, log transformation or linear regressions.
 
 ### Transforming the unadjusted retail sales data:
-
-The next step is to transform the data to make it stationary. In fact, in order to analyse a time series to estimate an ARIMA model, the common procedure requires the time series to be stationary.
 
 The evolution of the retail sales data seems to follow a linear trend, let's model it and remove the trend to the
 data.
@@ -128,31 +125,27 @@ data.
 We model the trend using a linear regression.
 ```{r}
 unadjusted.regression <- lm(data$unadjusted~data$adjustments)
-sa.unadjusted.regression <- lm(data$seasonally.adjusted~data$adjustments)
 ```
 
 Then we remove the trend from the data by simply getting the residuals of the regression
 ```{r}
 unadjusted.residuals <- residuals(unadjusted.regression)
-sa.residuals <- residuals(sa.unadjusted.regression)
 ```
 
 We now have the following ACF and PACF:
-
 ```{r}
 unadjusted.residuals.ts <- ts(unadjusted.residuals, frequency=12)
 tsdisplay(unadjusted.residuals.ts)
 ```
 
-From that plot, we remark that is a seasonal component available with a 12 lag period (see lags 12, 24, 36, etc...)
+From that plot, we remark that a strong seasonal component available with a 12 lag period (see lags 12, 24, 36, etc...)
 
 The goal now is to identify presence of AR and MA components in the residuals.
-Because the seasonal pattern is strong and stable, we will want to use an order of seasonal differencing in the model. This, we seasonallly differentiate the residuals with a lag of 12 months.
+Because the seasonal pattern is strong and stable, we want to use an order of seasonal differencing in the model. This, we seasonallly differentiate the residuals with a lag of 12 months.
 
 ```{r}
 diff.residuals.ts <- diff(unadjusted.residuals.ts, 1, lag=12)
 ```
-
 
 Now, let's test that the transformed data trend stationary or if the data requires more levels of differentiation.
 
@@ -170,11 +163,13 @@ We can then start to anaylise the transformed data in order to estimate a model.
 
 ### Esitmating an ARIMA model:
 
+The estimation of an ARIMA model is done by looking at the autocorrelograms.
+
 ```{r}
 tsdisplay(diff.residuals.ts)
 ```
 
-From the partial autocorrelogram, we see that the partial autocorrelation at `lag 1` is positive and exceeds the significance bounds (~0.5), while the partial autocorrelation at `lag 4` is negative and also exceeds the significance bounds (~-0.3). The partial autocorrelations tail off to zero after lag 4.
+We see that the partial autocorrelation at `lag 1` is positive and exceeds the significance bounds (~0.5), while the partial autocorrelation at `lag 4` is negative and also exceeds the significance bounds (~-0.3). The partial autocorrelations tail off to zero after lag 4.
 Finally, there are three significant spikes in the PACF suggesting a possible AR(3) term. The pattern in the ACF is not indicative of any simple model.
 
 We can then try to fit our estimated model on the unadjusted retail sales data:
@@ -195,14 +190,14 @@ Let's test whether there is significant evidence of non-zero correlation with a 
 Box.test(residuals(fit.estimated.model), lag=20, type="Ljung-Box")
 ```
 
-The p-value is 0.2292. There is no evidence of non-zero autocorrelation in the forecast errors.
+The p-value is 0.2292. There is no evidence of non-zero autocorrelation in the residuals.
 
 The following plot shows forecasting results of the estimated model:
 ```{r}
-plot(forecast(fit.estimated.model))
+plot(forecast(fit.estimated.model, h=36))
 ```
 
-To do understand how well the model performed, we need to look at the distribution of the residuals of the fitted model:
+To understand how well the model performs, we need to look at the distribution of the residuals for the fitted model:
 
 ```{r}
 par(mfrow=c(2,2))
@@ -216,8 +211,9 @@ qqline(residuals(fit.estimated.model), col = 2)
 par(mfrow=c(1,1))
 ```
 
-The successive forecast errors doesn't seem to be  auto-correlated.  The forecast errors seem to be normally distributed but has notable deviations from the straight line are signature of a light left tailed distribution (the density plot confirms this intuition)
+The successive forecast errors doesn't seem to be auto-correlated. The residuals seem to be normally distributed but has a notable deviations from the straight line are signature of a light left tailed distribution (the density plot confirms this intuition)
 
+We perform a Shapiro test to verify the normality of the distribution.
 ```{r}
 shapiro.test(residuals(fit.estimated.model))
 ```
@@ -225,7 +221,7 @@ shapiro.test(residuals(fit.estimated.model))
 the p-value is < 0.05 so the test rejects the null hypothesis that the data are normal.
 The fact that ACF/PACF plots does not show correlation in the errors and their distribution is not normal shows that the model is not performing very well and thus can be improved upon.
 
-### Improving the ARIMA approach
+### Ideas to improve the model using ARIMA methods:
 Manually estimating the parameters of the ARIMA model can be a good approach and give satisfying results, but they are quite hard to identify and extremelly subjective. Using automatic methods should overcome that issue.
 
 Automatic methods search over the space of possible models by minimizing the Akaike’s Information Criterion (AIC) - which measures the goodness of fit for a particular model by balancing the error of the fit against the number of parameters in the model. Other criterions can be used such that the Biases Corrected AIC or the Bayesian Information Criterion.
@@ -292,12 +288,12 @@ par(mfrow=c(1,1))
 
 ### Cross Validation:
 
-In order to choose the best approach to model our data set, we can not only based our decision on how well the model fits historical data. The accuracy of a forecasting should be determined by considering how well a model performs on new data that were not used when fitting the model.
+In order to choose the best approach to model our data, we can not only based our decision on how well the model fits historical data. The accuracy of a forecasting should be determined by considering how well a model performs on new data that were not used when fitting the model.
 
-To do so, we are going to use a variation of the cross validation adapted to the context of time series forecasting, it is equivalent to evaluate forecasting models with a rolling origin. And look at different evaluation metrics on different at "horizons". The main question being when evaluating a forecasting model,
-how well does the model forecasts after 1 months, 2 months and so on.
+To do so, we are going to use a variation of the cross validation adapted to the context of time series forecasting, it is equivalent to evaluate forecasting models with a rolling origin. And look at different evaluation metrics at different "horizons". 
+The main question when evaluating a forecasting model being: how well does the model forecasts after 1 months, 2 months and so on?
 
-We are mostly interesting in two metrics:
+Model's evaluation will be based on the two following metrics:
 
 * The Mean Absolute Percentage Error (MAPE) which is a scale-independent measure of the forecasting errors.
 * And, the Mean Absolute Scaled Error ([MASE](https://en.wikipedia.org/wiki/Mean_absolute_scaled_error)). MASE has the property that it is greater than one if the forecast is worse than the average naïve forecast.
@@ -316,7 +312,7 @@ mae <- function(actual, forecast) {
 ```
 
 
-The following procedure computes MASE and MAPE for cross-validation:
+The following procedure computes MASE and MAPE in the context of time series cross-validation:
 
 ```{r cv, cache=TRUE, warning=FALSE}
 k <- 12
@@ -366,7 +362,7 @@ mase.ets <- mae.ets / mean(abs(diff(unadjusted.ts, lag=12)))
 mase.holt.winters <- mae.holt.winters / mean(abs(diff(unadjusted.ts, lag=12)))
 ```
 
-Now we can plot the results:
+Now, we can plot the results:
 
 ```{r}
 
@@ -407,14 +403,30 @@ The results compare forecasting results for 3 different families of forecasting 
 
 * auto.ARIMA
 * ETS, an automatic procedure that find the best forecasting method between all Exponential Smoothing Models: Simple exponential smoothing, Holt’s method, Exponential trend method and Holt-Winters. One advantage of the exponential smoothing models is that they can be non-linear. So time series that exhibit non-linear characteristics may be better modelled using exponential smoothing state space models.
-* Holt-Winters additive methods (we focus on the additive methodology because the fluctuations around the trend look constant over time.) A special case of Exponential Smoothing particulary (Triple exponential smoothing) efficient to model seasonal time series. The smoothing parameters are infered by decomposing the time series in terms of a trend and seasonal component using moving averages.
+* Holt-Winters additive methods (we focus on the additive methodology because the fluctuations around the trend look constant over time). A special case of Exponential Smoothing particulary (Triple exponential smoothing) efficient to model seasonal time series. The smoothing parameters are infered by decomposing the time series in terms of a trend and seasonal component using moving averages.
 
-It seems clear that Holt-Winters Method performs the best. One interesting point we can note from those plots is that when MAPE/MASE linearly grow as the horizon gets larger for ETS methods, ARIMA and especially Holt-Winters plateau.
+It seems clear that Holt-Winters Method performs the best overall. But ETS methods performs better for short horizons when Holt-Winters is more performant for larger horizons. So choosing between the two methods depends on the question we want to answer with our forecasting.
+
+Here we want to know how next month's unadjusted Canadian retail sales number, ETS seems more appropriate
 
 ```{r}
-fit.holt.winters <- HoltWinters(unadjusted.ts, seasonal='additive')
-forecast.holt.winters <- forecast(fit.holt.winters, h=36)
-plot(forecast.holt.winters) 
+fit.ets <- ets(unadjusted.ts)
+forecast.ets <- forecast(fit.ets, h=36)
+plot(forecast.ets) 
+```
+
+For August 2015, this gives us:
+
+```{r}
+forecast.aug.2015 <- 45282203
+aug.2015 <- 44975310
+error <- 100 * abs(forecast.aug.2015 - aug.2015) / aug.2015
+error
 ```
 
 ### Conclusion:
+
+In order to forecast the canadian retail sales we first started by estimating an ARIMA model manually and saw that by fine tuning exogeneous regressors one could improve its forecasting capabilities. Then, we saw that in order to elect a good forecasting model one should evaluate the perfomance of the model not on historical data but on data that weren't used to fit the model. A cross-validation procedure, allowed us to choose a model based on several criterions.
+
+
+
