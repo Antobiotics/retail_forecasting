@@ -116,7 +116,7 @@ Note that the seasonal lags of the PACF and ACF show:
 Thus, we can safely assume the data is not stationary which means we need to transform the data such that 
 our process is stationary on mean and variance.
 
-Since non stationary a good idea would be to model the data using an ARIMA process, the most general class of models for forecasting a time series which can be transformed to be “stationary” by differenciation, log transformation or by taking the residuals of a linear regression.
+Since non stationary a good idea would be to model the data using an ARIMA process, the most general class of models for forecasting a time series which can be transformed to be stationary by differenciation, log transformation or by taking the residuals of a linear regression.
 
 ### Transforming the unadjusted retail sales data:
 
@@ -416,3 +416,5 @@ fit.holt.winters <- HoltWinters(unadjusted.ts, seasonal='additive')
 forecast.holt.winters <- forecast(fit.holt.winters, h=36)
 plot(forecast.holt.winters) 
 ```
+
+### Conclusion:
