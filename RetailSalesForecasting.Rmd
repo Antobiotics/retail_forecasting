@@ -402,6 +402,7 @@ grid.arrange(g.mape, g.mase, ncol=2)
 ```
 
 The results compare forecasting results for 3 different families of forecasting methods:
+
 * auto.ARIMA
 * ETS, an automatic procedure that find the best forecasting method between all Exponential Smoothing Models: Simple exponential smoothing, Holt’s method, Exponential trend method and Holt-Winters. One advantage of the exponential smoothing models is that they can be non-linear. So time series that exhibit non-linear characteristics may be better modelled using exponential smoothing state space models.
 * Holt-Winters additive methods (we focus on the additive methodology because the fluctuations around the trend look constant over time.) A special case of Exponential Smoothing particulary (Triple exponential smoothing) efficient to model seasonal time series. The smoothing parameters are infered by decomposing the time series in terms of a trend and seasonal component using moving averages.
